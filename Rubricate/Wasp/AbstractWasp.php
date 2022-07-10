@@ -1,128 +1,151 @@
 <?php
 
-/*
- * @package     RubricatePHP
- * @author      Andre Alves <andre AT brudam DOT com DOT br>
- * @link        https://github.com/rubricate/wasp
- * 
- */
-
 namespace Rubricate\Wasp;
 
-abstract class AbstractWasp {
-// class Log { # original name
+use Rubricate\Wasp\ConstWasp as C;
 
-    const ROOT_DIR = '';
+abstract class AbstractWasp
+{
+    abstract protected static function getDirFullPath();
+    abstract protected static function getPrefixToFile();
 
-    const LOG_DIR = "logs";
-    const LOG_TIME = 86400 * 5;
-
-    const STORAGE_MOD = 0775;
-    const DOMINIO = "dev";
-
-
-    /**
-     * Grava informacoes no Log com label INFO
-     * @param type $info
-     */
-    public static function info() {
-            foreach (func_get_args() as $info) {
-                self::setLog("INFO", $info);
-            }
+    public static function info()
+    {
+        foreach (func_get_args() as $info) {
+            self::set(C::TYPE_INFO, $info);
+        }
     }
 
-    /**
-     * Grava informacoes no Log com label ERROR
-     * @param type $error
-     */
-    public static function error() {
+    public static function error()
+    {
         foreach (func_get_args() as $error) {
-            self::setLog("ERROR", $error);
+            self::set(C::TYPE_ERROR, $error);
         }
     }
 
-    /**
-     * Grava informacoes no Log com label ERROR
-     * @param type $error
-     */
-    public static function debug() {
+    public static function debug()
+    {
         foreach (func_get_args() as $debug) {
-            self::setLog("DEBUG", $debug);
+            self::set(C::TYPE_DEBUG, $debug);
         }
     }
 
-    /**
-     * Grava informacoes no Log com label ERROR
-     * @param type $error
-     */
-    public static function trace() {
+    public static function trace()
+    {
+        $type = null;
+        $str  = '';
+
         foreach (func_get_args() as $log) {
-            if (is_array($log)) {
-                $str = date('d/m/Y H:i:s') . ": ";
-                $str .= print_r($log, true);
-            } else if (is_object($log)) {
-                if (get_class($log) == "Exception" || is_subclass_of($log, "Exception")) {
-                    $str = date('d/m/Y H:i:s') . ": {$log->getTraceAsString()}";
-                } else {
-                    $str = date('d/m/Y H:i:s') . ": ";
-                    $str .= print_r($log, true);
-                }
-            } else {
-                $str = date('d/m/Y H:i:s') . ": {$log}\n";
+
+            $str = self::getMessage($type, self::getVarDump($log));
+
+            if (is_array($log) || is_object($log)) {
+                $str = self::getMessage($type, print_r($log, true));
             }
-            self::setLog("TRACE", $str);
+
+            if (self::isException($log)) {
+                $str = self::getMessage($type, $log->getTraceAsString());
+            }
+
+            if(is_string($log)){
+                $str = self::getMessage($type, $log . PHP_EOL);
+            }
+
+            self::set(C::TYPE_TRACE, $str);
         }
+
         $trace = [];
+
         foreach (debug_backtrace() as $v) {
+
             foreach ($v['args'] as &$arg) {
                 if (is_object($arg)) {
                     $arg = '(Object)';
                 }
             }
+
             array_push($trace, array_filter($v, function($key) {
-                        return $key != 'object';
-                    }, ARRAY_FILTER_USE_KEY));
+                return $key != 'object';
+            }, ARRAY_FILTER_USE_KEY));
         }
+
         $str .= "Trace: " . print_r($trace, true);
-        self::setLog("TRACE", $str);
+        self::set(C::TYPE_TRACE, $str);
     }
 
-    /**
-     * Grava dados no log com label $tipo
-     * @param type $tipo
-     * @param Exception $log
-     */
-    private static function setLog($tipo, $log) {
-        if ($tipo != 'TRACE') {
-            if (is_array($log)) {
-                $str = date('d/m/Y H:i:s') . " {$tipo}: ";
-                $str .= print_r($log, true);
-            } else if (is_object($log)) {
-                if (get_class($log) == "Exception" || is_subclass_of($log, "Exception")) {
-                    $str = date('d/m/Y H:i:s') . " {$tipo}: {$log->getTraceAsString()}";
-                } else {
-                    $str = date('d/m/Y H:i:s') . " {$tipo}: ";
-                    $str .= print_r($log, true);
-                }
-            } else {
-                $str = date('d/m/Y H:i:s') . " {$tipo}: {$log}\n";
+    private static function set($type, $log)
+    {
+        $logdir = static::getDirFullPath();
+        $file   = $logdir . self::getFile('_trace_');
+        $str    = '';
+
+        if ($type != C::TYPE_TRACE) {
+
+            $str = self::getMessage($type, self::getVarDump($log));
+
+            if (is_array($log) || is_object($log)) {
+                $str = self::getMessage($type, print_r($log, true));
             }
-            $logdir = self::LOG_DIR . "/";
-            $file = $logdir . self::DOMINIO . "_" . date('Y-m-d') . ".txt";
-        } else {
-            $logdir = self::LOG_DIR . "/";
-            $file = $logdir . self::DOMINIO . "_trace_" . date('Y-m-d') . ".txt";
+
+            if (self::isException($log)) {
+                $str = self::getMessage($type, $log->getTraceAsString());
+            }
+
+            if(is_string($log)){
+                $str = self::getMessage($type, $log . PHP_EOL);
+            }
+
+            $file = $logdir . self::getFile();
         }
-        $exists = file_exists($file);
+
         @file_put_contents($file, $str, FILE_APPEND | FILE_TEXT);
-        if (!$exists) {
-            @chmod($file, self::STORAGE_MOD);
+
+        if (!file_exists($file)) {
+
+            @chmod($file, C::STORAGE_MOD);
+
             foreach (new \DirectoryIterator($logdir) as $fileInfo) {
-                if (!$fileInfo->isDot() && !$fileInfo->isDir() && time() - $fileInfo->getCTime() >= self::LOG_TIME) {
+
+                if (
+                    !$fileInfo->isDot() && !$fileInfo->isDir() &&
+                    time() - $fileInfo->getCTime() >= C::CHANGE_TIME) {
+
                     @unlink($fileInfo->getRealPath());
                 }
             }
         }
+    }
+
+    private static function getFile()
+    {
+        $p = trim(static::getPrefixToFile());
+        $d = date('Y-m-d');
+        $e = '.txt';
+
+        return $p . $d . $e;
+    }
+
+    private static function getMessage($type, $message)
+    {
+        $d = date('Y-m-d H:i:s');
+        $s = '%s %s: %s';
+
+       return sprintf($s, $d, $type, $message);
+    }
+
+    private static function isException($log)
+    {
+        return (
+            is_object($log) && (
+                (get_class($log) == "Exception") ||
+                is_subclass_of($log, "Exception")
+            ));
+    }
+
+    public static function getVarDump($log)
+    {
+        ob_start(); var_dump($log);
+        return ob_get_clean();
     }
 
 }
