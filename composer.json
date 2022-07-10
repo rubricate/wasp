@@ -1,0 +1,31 @@
+{
+    "name": "rubricate/wasp",
+    "description": "Component to Debugger",
+    "authors": [
+        {
+            "name": "Andre Alves",
+            "email": "andre@brudam.com.br"
+        },
+        {
+            "name": "Estefanio N Santos",
+            "email": "estefanions@gmail.com"
+        }
+    ],
+    "keywords": [
+        "rubricateframework",
+        "rubricatephp",
+        "debugger"
+    ],
+    "support": {
+        "docs"   : "https://rubricate.github.io/components/wasp",
+        "source" : "https://github.com/rubricate/wasp"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rubricate\\Wasp\\": "Rubricate/Wasp/"
+        }
+
+    }
+
+}
+
