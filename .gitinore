@@ -1,0 +1,6 @@
+*.vim
+tags
+logs/
+main.php
+TestLog.php
+note/
